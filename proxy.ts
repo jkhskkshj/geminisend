@@ -1,24 +1,55 @@
 import { serve } from "https://deno.land/std@0.223.0/http/server.ts";
 
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta";
-
 async function handler(req: Request): Promise<Response> {
   try {
+    console.log(`Received request: ${req.method} ${req.url}`);
+
     const url = new URL(req.url);
     const searchParams = url.searchParams;
     const apiKey = searchParams.get("key") || Deno.env.get("GEMINI_API_KEY");
 
     if (!apiKey) {
+      console.error("API key is missing");
       return new Response(JSON.stringify({ error: "API key is required" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // 假设客户端发送到 /v1/chat/completions，转换为 Gemini 的 generateContent 端点
+    // 构造要发送到自身的请求
+    const testUrl = `https://miya-cn-txt.deno.dev/v1/chat/completions?key=${apiKey}`;
+    const testPayload = {
+      model: "gemini-1.5-flash",
+      contents: [
+        {
+          parts: [
+            { text: "Hello" }
+          ]
+        }
+      ],
+      generationConfig: {
+        maxOutputTokens: 1024,
+        temperature: 0.7
+      }
+    };
+
+    console.log("Sending test request to self:", testUrl);
+    const testResponse = await fetch(testUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(testPayload),
+    });
+
+    const testResponseText = await testResponse.text();
+    console.log("Test response:", testResponseText);
+
+    // 原有的代理逻辑
     const payload = await req.json();
     const model = payload.model || "gemini-1.5-flash";
-    const geminiUrl = `${GEMINI_API_URL}/models/${model}:generateContent?key=${apiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    console.log(`Forwarding to Gemini API: ${geminiUrl}`);
 
     const response = await fetch(geminiUrl, {
       method: "POST",
@@ -28,7 +59,10 @@ async function handler(req: Request): Promise<Response> {
       body: JSON.stringify(payload),
     });
 
-    return new Response(response.body, {
+    const responseText = await response.text();
+    console.log("Gemini API response:", responseText);
+
+    return new Response(responseText, {
       status: response.status,
       headers: response.headers,
     });
