@@ -1,24 +1,44 @@
-import { serve } from "https://deno.land/std/http/server.ts";
+import { serve } from "https://deno.land/std@0.223.0/http/server.ts";
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta";
-const API_KEY = Deno.env.get("GEMINI_API_KEY") || "your-api-key-here";
 
 async function handler(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-  const path = url.pathname;
+  try {
+    const url = new URL(req.url);
+    const searchParams = url.searchParams;
+    const apiKey = searchParams.get("key") || Deno.env.get("GEMINI_API_KEY");
 
-  const geminiUrl = `${GEMINI_API_URL}${path}?key=${API_KEY}`;
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "API key is required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-  const response = await fetch(geminiUrl, {
-    method: req.method,
-    headers: req.headers,
-    body: req.body,
-  });
+    // 假设客户端发送到 /v1/chat/completions，转换为 Gemini 的 generateContent 端点
+    const payload = await req.json();
+    const model = payload.model || "gemini-1.5-flash";
+    const geminiUrl = `${GEMINI_API_URL}/models/${model}:generateContent?key=${apiKey}`;
 
-  return new Response(response.body, {
-    status: response.status,
-    headers: response.headers,
-  });
+    const response = await fetch(geminiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return new Response(response.body, {
+      status: response.status,
+      headers: response.headers,
+    });
+  } catch (error) {
+    console.error("Proxy error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 }
 
 serve(handler, { port: 8000 });
